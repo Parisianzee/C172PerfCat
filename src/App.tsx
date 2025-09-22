@@ -76,13 +76,16 @@ export default function App() {
       setMetar(item);
       setMetarStatus('');
 
-      // ---- Temperature (covering AWC + NOAA shapes)
+      // ---- Temperature (use normalized tempC first, then other shapes)
       const tempC =
+        (typeof item?.tempC === 'number' ? item.tempC : null) ??
         (typeof item?.temp === 'number' ? item.temp : null) ??
         (typeof item?.temperature === 'number' ? item.temperature : null) ??
         (typeof item?.obs?.temp === 'number' ? item.obs.temp : null) ??
         null;
+
       if (typeof tempC === 'number') setOAT(Math.round(tempC));
+
 
       // ---- Pressure altitude (field elevation + altimeter, if both present)
       const elev = AIRPORTS[code]?.elevation_ft ?? null;
