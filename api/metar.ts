@@ -6,7 +6,18 @@ function toNumber(x: any) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Robust parser from raw METAR string
+// Minimal, robust temp parser: finds the first TT/DD token (e.g., "13/07" or "M02/M05")
+function extractTempC(raw?: string): number | null {
+  if (!raw || typeof raw !== 'string') return null;
+  // match token bounded by spaces or string boundaries
+  const m = raw.match(/(?:^|\s)(M?\d{1,2})\/(M?\d{1,2})(?=\s|$)/);
+  if (!m) return null;
+  const tStr = m[1]; // temperature part
+  const val = tStr.startsWith('M') ? -parseInt(tStr.slice(1), 10) : parseInt(tStr, 10);
+  return Number.isFinite(val) ? val : null;
+}
+
+// Parse from raw METAR string (wind + altimeter; temp via extractTempC)
 function parseFromRaw(raw?: string) {
   if (!raw || typeof raw !== 'string') return {};
 
@@ -22,28 +33,8 @@ function parseFromRaw(raw?: string) {
     wind_speed_kt = toNumber(spd);
   }
 
-  // TEMPERATURE/DEWPOINT:
-  // Use token scanning to be safe across spacing/ordering quirks.
-  // Accept tokens like "13/07", "M02/M05"
-  let tempC: number | null = null;
-  const tokens = raw.split(/\s+/);
-  for (const tok of tokens) {
-    if (/^(M?\d{1,2})\/(M?\d{1,2})$/.test(tok)) {
-      const [, tStr] = tok.match(/^(M?\d{1,2})\/(M?\d{1,2})$/)!;
-      if (tStr) {
-        tempC = tStr.startsWith('M') ? -toNumber(tStr.slice(1))! : toNumber(tStr)!;
-        break;
-      }
-    }
-  }
-  // Fallback regex if token scan somehow missed it
-  if (tempC == null) {
-    const tMatch = raw.match(/\b(M?\d{1,2})\/(M?\d{1,2})\b/);
-    if (tMatch) {
-      const v = tMatch[1];
-      tempC = v.startsWith('M') ? -toNumber(v.slice(1))! : toNumber(v)!;
-    }
-  }
+  // TEMPERATURE/DEWPOINT
+  const tempC = extractTempC(raw);
 
   // ALTIMETER: "Q1027" (hPa) or "A2992" (inHg * 100)
   let altim_in_hg: number | null = null;
@@ -121,8 +112,8 @@ function normalizeAWC(item: any) {
     toNumber(item?.wind?.speed_kts) ??
     toNumber(item?.wind?.speed_kt) ?? null;
 
-  // Enrich from raw if any of those are missing
-  if (raw && (tempC == null || altim_in_hg == null || wind_dir_degrees == null || wind_speed_kt == null)) {
+  // Enrich from raw if any are missing (always use simple raw extraction for temp)
+  if (raw) {
     const fromRaw = parseFromRaw(raw);
     if (tempC == null && fromRaw.tempC != null) tempC = fromRaw.tempC;
     if (altim_in_hg == null && fromRaw.altim_in_hg != null) altim_in_hg = fromRaw.altim_in_hg;
