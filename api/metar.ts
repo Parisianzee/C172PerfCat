@@ -1,15 +1,18 @@
 export const config = { runtime: 'edge' };
 
-// --- helpers ---
+/* ----------------------------- helpers ----------------------------- */
 function toNumber(x: any) {
   const n = Number(x);
   return Number.isFinite(n) ? n : null;
 }
 
-// Parse from raw METAR string
+// Robust parser from raw METAR string
 function parseFromRaw(raw?: string) {
   if (!raw || typeof raw !== 'string') return {};
-  const windMatch = raw.match(/\b(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?KT\b/);
+
+  // WIND: e.g., "02008KT", "VRB04KT", optionally gusts "22012G20KT"
+  const windRe = /\b(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?KT\b/;
+  const windMatch = raw.match(windRe);
   let wind_dir_degrees: number | null = null;
   let wind_speed_kt: number | null = null;
   if (windMatch) {
@@ -18,12 +21,31 @@ function parseFromRaw(raw?: string) {
     wind_dir_degrees = dir === 'VRB' ? null : toNumber(dir);
     wind_speed_kt = toNumber(spd);
   }
-  const tMatch = raw.match(/\b(M?\d{1,2})\/(M?\d{1,2})\b/);
+
+  // TEMPERATURE/DEWPOINT:
+  // Use token scanning to be safe across spacing/ordering quirks.
+  // Accept tokens like "13/07", "M02/M05"
   let tempC: number | null = null;
-  if (tMatch) {
-    const t = tMatch[1];
-    tempC = t.startsWith('M') ? -toNumber(t.slice(1)) : toNumber(t);
+  const tokens = raw.split(/\s+/);
+  for (const tok of tokens) {
+    if (/^(M?\d{1,2})\/(M?\d{1,2})$/.test(tok)) {
+      const [, tStr] = tok.match(/^(M?\d{1,2})\/(M?\d{1,2})$/)!;
+      if (tStr) {
+        tempC = tStr.startsWith('M') ? -toNumber(tStr.slice(1))! : toNumber(tStr)!;
+        break;
+      }
+    }
   }
+  // Fallback regex if token scan somehow missed it
+  if (tempC == null) {
+    const tMatch = raw.match(/\b(M?\d{1,2})\/(M?\d{1,2})\b/);
+    if (tMatch) {
+      const v = tMatch[1];
+      tempC = v.startsWith('M') ? -toNumber(v.slice(1))! : toNumber(v)!;
+    }
+  }
+
+  // ALTIMETER: "Q1027" (hPa) or "A2992" (inHg * 100)
   let altim_in_hg: number | null = null;
   const qMatch = raw.match(/\bQ(\d{4})\b/);
   const aMatch = raw.match(/\bA(\d{4})\b/);
@@ -34,10 +56,11 @@ function parseFromRaw(raw?: string) {
     const hund = toNumber(aMatch[1]);
     if (hund != null) altim_in_hg = Number((hund / 100).toFixed(2));
   }
+
   return { tempC, altim_in_hg, wind_dir_degrees, wind_speed_kt };
 }
 
-// NOAA text -> normalized
+// NOAA text -> normalized record array
 function parseNOAAMetarText(text: string) {
   const lines = text.trim().split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const raw = lines[lines.length - 1] || '';
@@ -65,7 +88,7 @@ function parseNOAAMetarText(text: string) {
   }];
 }
 
-// AWC JSON item -> normalized
+// AWC JSON item -> normalized (then fill from raw if missing)
 function normalizeAWC(item: any) {
   const station = item?.station_id ?? item?.station ?? item?.icaoId ?? null;
   const raw = item?.raw_text ?? item?.raw ?? item?.rawOb ?? null;
@@ -98,6 +121,7 @@ function normalizeAWC(item: any) {
     toNumber(item?.wind?.speed_kts) ??
     toNumber(item?.wind?.speed_kt) ?? null;
 
+  // Enrich from raw if any of those are missing
   if (raw && (tempC == null || altim_in_hg == null || wind_dir_degrees == null || wind_speed_kt == null)) {
     const fromRaw = parseFromRaw(raw);
     if (tempC == null && fromRaw.tempC != null) tempC = fromRaw.tempC;
@@ -126,7 +150,7 @@ async function fetchNOAA(icao: string) {
   return parseNOAAMetarText(txt);
 }
 
-// --- Edge function handler ---
+/* ------------------------------ handler ----------------------------- */
 export default async function handler(req: Request) {
   const { searchParams } = new URL(req.url);
   const icao = (searchParams.get('icao') || '').toUpperCase();
