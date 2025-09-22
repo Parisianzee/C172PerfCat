@@ -253,19 +253,13 @@ export default function App() {
         </div>
 
         {metarStatus && <p className="mt-3 text-sm text-gray-600">{metarStatus}</p>}
-        {metar && (
-          <pre className="mt-3 text-xs bg-gray-50 border rounded-xl p-3 overflow-auto">
-{JSON.stringify({
-  station: metar?.station_id ?? metar?.station ?? null,
-  obsTime: metar?.obsTime ?? metar?.time ?? null,
-  tempC: metar?.temp ?? metar?.temperature ?? metar?.obs?.temp ?? null,
-  altim_in_hg: metar?.altim_in_hg ?? metar?.altimeter?.in ?? null,
-  wind_dir_degrees: metar?.wind_dir_degrees ?? metar?.wind_dir ?? metar?.wind?.degrees ?? null,
-  wind_speed_kt: metar?.wind_speed_kt ?? metar?.wind?.speed_kts ?? metar?.wind?.speed_kt ?? null,
-  raw: metar?.raw_text ?? metar?.raw ?? null
-}, null, 2)}
-          </pre>
+        {metarStatus && <p className="mt-3 text-sm text-gray-600">{metarStatus}</p>}
+        {metar?.raw && (
+          <p className="mt-3 text-sm font-mono bg-gray-50 border rounded-xl p-3 overflow-auto">
+            {metar.raw}
+          </p>
         )}
+
 
         {result && (
           <section className="mt-8">
