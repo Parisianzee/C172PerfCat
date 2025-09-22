@@ -6,15 +6,41 @@ function toNumber(x: any) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Minimal, robust temp parser: finds the first TT/DD token (e.g., "13/07" or "M02/M05")
+// Minimal + tolerant: TT/DD, TT//, and US T-group fallback
 function extractTempC(raw?: string): number | null {
   if (!raw || typeof raw !== 'string') return null;
-  // match token bounded by spaces or string boundaries
-  const m = raw.match(/(?:^|\s)(M?\d{1,2})\/(M?\d{1,2})(?=\s|$)/);
-  if (!m) return null;
-  const tStr = m[1]; // temperature part
-  const val = tStr.startsWith('M') ? -parseInt(tStr.slice(1), 10) : parseInt(tStr, 10);
-  return Number.isFinite(val) ? val : null;
+
+  // Primary: match TT/DD with optional minus and allow missing dewpoint (// or ///)
+  // Examples: "13/07", "M02/M05", "10//", "03///"
+  const m = raw.match(/(?:^|\s)(M?\d{1,2})\/(M?\d{1,2}|\/\/\/?)(?=\s|$)/);
+  if (m) {
+    const tStr = m[1];
+    const val = tStr[0] === 'M' ? -parseInt(tStr.slice(1), 10) : parseInt(tStr, 10);
+    return Number.isFinite(val) ? val : null;
+  }
+
+  // Fallback: scan tokens (some feeds can insert non-standard whitespace)
+  for (const tok of raw.split(/\s+/)) {
+    const mm = tok.match(/^(M?\d{1,2})\/(M?\d{1,2}|\/\/\/?)$/);
+    if (mm) {
+      const tStr = mm[1];
+      const val = tStr[0] === 'M' ? -parseInt(tStr.slice(1), 10) : parseInt(tStr, 10);
+      return Number.isFinite(val) ? val : null;
+    }
+  }
+
+  // Fallback #2: US "T-group" with tenths (e.g., T01234567 => +1.2°C, +3.4°C)
+  const Tg = raw.match(/\bT(\d{8})\b/);
+  if (Tg) {
+    const s = Tg[1];
+    const signT = s[0] === '1' ? -1 : 1;
+    const tTenths = parseInt(s.slice(1, 4), 10); // first 3 digits after sign are temp * 10
+    if (Number.isFinite(tTenths)) {
+      return Math.round(signT * (tTenths / 10));
+    }
+  }
+
+  return null;
 }
 
 // Parse from raw METAR string (wind + altimeter; temp via extractTempC)
