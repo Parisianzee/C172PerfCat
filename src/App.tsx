@@ -147,6 +147,7 @@ export default function App() {
         <header className="mb-6">
           <h1 className="text-2xl font-semibold">C172M Takeoff Performance</h1>
           <p className="text-gray-600 mt-1">Metric UI; PA in ft, speeds KIAS. METAR + runway components.</p>
+          <p className="text-gray-600 mt-1">RESULTS AS GENERAL GUIDANCE ONLY - PLEASE USE YOUR P.O.H</p>
         </header>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
